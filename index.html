@@ -8,71 +8,148 @@
 <title>Padel</title>
 <style>
   html,body{margin:0;height:100%;background:#000;color:#fff;font-family:-apple-system,system-ui,sans-serif;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
-  body{display:flex;flex-direction:column;height:100vh}
+  button{font-family:inherit;color:#fff;border:0}
+  .view{display:none;flex-direction:column;height:100vh}
+  .view.on{display:flex}
   #top{font-size:13px;text-align:center;padding:2px 0;color:#aaa;line-height:1.3}
   #top b{color:#fff}
   #teams{flex:1;display:flex;gap:4px;padding:0 4px}
-  .t{flex:1;border:0;border-radius:14px;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:inherit}
-  #a{background:#1f6f3f} #b{background:#1f4a8f}
+  .t{flex:1;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px}
+  .A{background:#1f6f3f} .B{background:#1f4a8f}
   .t:active{filter:brightness(1.4)}
-  .n{font-size:13px;opacity:.85}
+  .n{font-size:11px;opacity:.9;line-height:1.2;text-align:center}
   .p{font-size:44px;font-weight:700;line-height:1}
-  .g{font-size:15px;margin-top:2px}
-  #bar{display:flex;gap:4px;padding:4px}
-  #bar button{flex:1;background:#333;color:#fff;border:0;border-radius:10px;font-size:13px;padding:6px 0}
-  #msg{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;flex-direction:column;font-size:18px;text-align:center}
-  #msg button{margin-top:10px;background:#1f6f3f;color:#fff;border:0;border-radius:10px;padding:8px 16px;font-size:15px}
+  .g{font-size:14px;margin-top:2px}
+  .bar{display:flex;gap:4px;padding:4px}
+  .bar button{flex:1;background:#333;border-radius:10px;font-size:13px;padding:6px 0}
+  .bar button.go{background:#1f6f3f}
+  .bar button:disabled{opacity:.35}
+  h1{font-size:14px;margin:4px 0;text-align:center;font-weight:600;color:#aaa}
+  #players{flex:1;display:flex;flex-direction:column;gap:4px;padding:0 4px;overflow:auto}
+  .pl{border-radius:10px;padding:8px;font-size:16px;background:#333;display:flex;justify-content:space-between}
+  .pl span{opacity:.8;font-size:13px}
+  #hlist{flex:1;overflow:auto;padding:0 6px;font-size:13px}
+  .h{border-bottom:1px solid #333;padding:5px 0;line-height:1.35}
+  .h .w{color:#6fdc8c;font-weight:600}
+  .h .x{color:#aaa}
+  #msg{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;flex-direction:column;font-size:18px;text-align:center;padding:8px}
+  #msg button{margin-top:10px;background:#1f6f3f;border-radius:10px;padding:8px 16px;font-size:15px}
 </style>
 </head>
 <body>
-<div id="top"></div>
-<div id="teams">
-  <button class="t" id="a" onclick="pt(0)"><span class="n">MY</span><span class="p" id="pa">0</span><span class="g" id="ga">0</span></button>
-  <button class="t" id="b" onclick="pt(1)"><span class="n">ONI</span><span class="p" id="pb">0</span><span class="g" id="gb">0</span></button>
+
+<div class="view" id="vSetup">
+  <h1>Stuknij gracza: MY / ONI</h1>
+  <div id="players"></div>
+  <div class="bar">
+    <button onclick="go('vHist')">Historia</button>
+    <button class="go" id="startBtn" onclick="start()">Start</button>
+  </div>
 </div>
-<div id="bar">
-  <button onclick="undo()">↶ Cofnij</button>
-  <button id="gp" onclick="toggleGP()"></button>
-  <button onclick="reset()">Nowy</button>
+
+<div class="view" id="vGame">
+  <div id="top"></div>
+  <div id="teams">
+    <button class="t A" onclick="pt(0)"><span class="n" id="na"></span><span class="p" id="pa">0</span><span class="g" id="ga"></span></button>
+    <button class="t B" onclick="pt(1)"><span class="n" id="nb"></span><span class="p" id="pb">0</span><span class="g" id="gb"></span></button>
+  </div>
+  <div class="bar">
+    <button onclick="undo()">↶ Cofnij</button>
+    <button id="gp" onclick="toggleGP()"></button>
+    <button onclick="newGame()">Nowa</button>
+  </div>
 </div>
+
+<div class="view" id="vHist">
+  <h1>Historia sesji</h1>
+  <div id="hlist"></div>
+  <div class="bar">
+    <button onclick="clearHist()">Wyczyść</button>
+    <button class="go" onclick="back()">Wróć</button>
+  </div>
+</div>
+
 <div id="msg"><div id="msgt"></div><button onclick="hide()">OK</button></div>
+
 <script>
+var NAMES=['Dawid','Kamil','Kuba','Damian'];
 var LBL=['0','15','30','40'];
-var S, H=[];
-function fresh(){return{p:[0,0],g:[0,0],sets:[],tb:false,gp:true,done:false}}
+// D = persisted data: current match S (or null), undo stack H, session history, player picks
+var D;
+function freshMatch(teams,gp){return{teams:teams,p:[0,0],g:[0,0],sets:[],tb:false,gp:gp,done:false,started:Date.now()}}
 function save(){
-  try{localStorage.setItem('padel',JSON.stringify({S:S,H:H.slice(-200)}))}catch(e){}
-  // backup in URL hash, survives reload even without localStorage
-  try{history.replaceState(null,'','#'+encodeURIComponent(JSON.stringify(S)))}catch(e){}
+  try{localStorage.setItem('padel2',JSON.stringify(D))}catch(e){}
+  // backup in URL hash (without undo stack), survives reload even without localStorage
+  try{history.replaceState(null,'','#'+encodeURIComponent(JSON.stringify({S:D.S,hist:D.hist,pick:D.pick,gp:D.gp})))}catch(e){}
 }
 function load(){
-  try{var d=JSON.parse(localStorage.getItem('padel'));if(d&&d.S){S=d.S;H=d.H||[];return}}catch(e){}
-  try{if(location.hash.length>1){S=JSON.parse(decodeURIComponent(location.hash.slice(1)));return}}catch(e){}
-  S=fresh();
+  try{var d=JSON.parse(localStorage.getItem('padel2'));if(d&&d.hist){D=d;return}}catch(e){}
+  try{if(location.hash.length>1){var h=JSON.parse(decodeURIComponent(location.hash.slice(1)));if(h&&h.hist){D=h;D.H=[];return}}}catch(e){}
+  D={S:null,H:[],hist:[],pick:{},gp:true};
 }
+var S;
+function go(v){['vSetup','vGame','vHist'].forEach(function(id){document.getElementById(id).className='view'+(id==v?' on':'')});
+  if(v=='vHist')drawHist();if(v=='vSetup')drawSetup();if(v=='vGame')draw()}
+function back(){go(D.S&&!D.S.done?'vGame':'vSetup')}
+
+// --- setup ---
+function drawSetup(){
+  var el=document.getElementById('players');el.innerHTML='';
+  var c=[0,0];
+  NAMES.forEach(function(n){
+    var t=D.pick[n];if(t===0||t===1)c[t]++;
+    var b=document.createElement('button');
+    b.className='pl'+(t===0?' A':t===1?' B':'');
+    b.innerHTML=n+'<span>'+(t===0?'MY':t===1?'ONI':'-')+'</span>';
+    b.onclick=function(){var cur=D.pick[n];D.pick[n]=cur===0?1:cur===1?undefined:0;save();drawSetup()};
+    el.appendChild(b);
+  });
+  document.getElementById('startBtn').disabled=!(c[0]>=1&&c[1]>=1&&c[0]<=2&&c[1]<=2);
+}
+function start(){
+  var teams=[[],[]];NAMES.forEach(function(n){var t=D.pick[n];if(t===0||t===1)teams[t].push(n)});
+  D.S=freshMatch(teams,D.gp);D.H=[];save();S=D.S;go('vGame');
+}
+
+// --- match ---
+function tname(i){return S.teams[i].join(' + ')}
 function setsWon(i){var n=0;S.sets.forEach(function(s){if(s[i]>s[1-i])n++});return n}
+function record(winner){
+  D.hist.unshift({teams:S.teams,sets:S.sets.concat(S.g[0]||S.g[1]?[S.g.slice()]:[]),winner:winner,at:Date.now()});
+}
 function winGame(i){
   S.g[i]++;S.p=[0,0];
   var a=S.g[i],b=S.g[1-i];
   if(S.tb||(a>=6&&a-b>=2)){
     S.sets.push(S.g.slice());S.g=[0,0];S.tb=false;
-    if(setsWon(i)==2){S.done=true;show((i?'ONI':'MY')+' wygrywają mecz!')}
-    else show('Set dla: '+(i?'ONI':'MY'));
+    if(setsWon(i)==2){S.done=true;record(i);show('Mecz wygrywa:<br><b>'+tname(i)+'</b><br>'+S.sets.map(function(s){return s[0]+':'+s[1]}).join('  '))}
+    else show('Set dla: '+tname(i));
   }
   else if(S.g[0]==6&&S.g[1]==6){S.tb=true}
 }
 function pt(i){
   if(S.done)return;
-  H.push(JSON.stringify(S));
+  D.H.push(JSON.stringify(S));if(D.H.length>200)D.H.shift();
   var p=S.p;p[i]++;
   if(S.tb){if(p[i]>=7&&p[i]-p[1-i]>=2)winGame(i)}
   else if(S.gp){if(p[i]==4)winGame(i)}
   else{if(p[i]>=4&&p[i]-p[1-i]>=2)winGame(i)}
-  save();draw();
+  D.S=S;save();draw();
 }
-function undo(){if(H.length){S=JSON.parse(H.pop());save();draw()}}
-function reset(){if(confirm('Nowy mecz?')){var gp=S.gp;S=fresh();S.gp=gp;H=[];save();draw()}}
-function toggleGP(){S.gp=!S.gp;save();draw()}
+function undo(){
+  if(!D.H.length)return;
+  // undoing the match-winning point removes it from history again
+  if(S.done)D.hist.shift();
+  S=D.S=JSON.parse(D.H.pop());save();draw();
+}
+function newGame(){
+  if(!S.done){
+    var played=S.sets.length||S.g[0]||S.g[1]||S.p[0]||S.p[1];
+    if(played){if(!confirm('Przerwać mecz? Trafi do historii.'))return;record(-1)}
+  }
+  D.S=null;D.H=[];save();go('vSetup');
+}
+function toggleGP(){S.gp=D.gp=!S.gp;save();draw()}
 function lbl(i){
   var a=S.p[i],b=S.p[1-i];
   if(S.tb)return String(a);
@@ -80,6 +157,9 @@ function lbl(i){
   return LBL[Math.min(a,3)];
 }
 function draw(){
+  document.getElementById('na').textContent=S.teams[0].join('\n');
+  document.getElementById('nb').textContent=S.teams[1].join('\n');
+  document.getElementById('na').style.whiteSpace=document.getElementById('nb').style.whiteSpace='pre-line';
   document.getElementById('pa').textContent=lbl(0);
   document.getElementById('pb').textContent=lbl(1);
   document.getElementById('ga').textContent='gemy '+S.g[0];
@@ -89,9 +169,29 @@ function draw(){
   document.getElementById('top').innerHTML=(t?'Sety: <b>'+t+'</b>':'Set 1')+(S.tb?' <b>TIEBREAK</b>':'')+gold;
   document.getElementById('gp').textContent=S.gp?'Złoty ✓':'Przewagi';
 }
-function show(t){document.getElementById('msgt').textContent=t;document.getElementById('msg').style.display='flex'}
-function hide(){document.getElementById('msg').style.display='none'}
-load();draw();
+
+// --- history ---
+function hhmm(ts){var d=new Date(ts);return d.getHours()+':'+('0'+d.getMinutes()).slice(-2)}
+function drawHist(){
+  var el=document.getElementById('hlist');
+  if(!D.hist.length){el.innerHTML='<div class="h x">Brak meczów</div>';return}
+  var wins={};
+  D.hist.forEach(function(m){if(m.winner>=0)m.teams[m.winner].forEach(function(n){wins[n]=(wins[n]||0)+1})});
+  var sum=NAMES.map(function(n){return n+' '+(wins[n]||0)}).join(' · ');
+  el.innerHTML='<div class="h"><b>Wygrane:</b> '+sum+'</div>'+D.hist.map(function(m,k){
+    var sc=m.sets.map(function(s){return s[0]+':'+s[1]}).join(' ')||'-';
+    var a=m.teams[0].join('+'),b=m.teams[1].join('+');
+    var w=m.winner;
+    return '<div class="h"><span class="x">#'+(D.hist.length-k)+' '+hhmm(m.at)+(w<0?' przerwany':'')+'</span><br>'+
+      (w===0?'<span class="w">'+a+'</span>':a)+' vs '+(w===1?'<span class="w">'+b+'</span>':b)+'<br><b>'+sc+'</b></div>';
+  }).join('');
+}
+function clearHist(){if(confirm('Wyczyścić historię sesji?')){D.hist=[];save();drawHist()}}
+
+function show(t){document.getElementById('msgt').innerHTML=t;document.getElementById('msg').style.display='flex'}
+function hide(){document.getElementById('msg').style.display='none';if(S&&S.done){D.S=null;D.H=[];save();go('vSetup')}}
+
+load();S=D.S;go(S?'vGame':'vSetup');
 </script>
 </body>
 </html>
