@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="disabled-adaptations" content="watch">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Padel</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;color:#fff;font-family:-apple-system,system-ui,sans-serif;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  body{display:flex;flex-direction:column;height:100vh}
+  #top{font-size:13px;text-align:center;padding:2px 0;color:#aaa;line-height:1.3}
+  #top b{color:#fff}
+  #teams{flex:1;display:flex;gap:4px;padding:0 4px}
+  .t{flex:1;border:0;border-radius:14px;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:inherit}
+  #a{background:#1f6f3f} #b{background:#1f4a8f}
+  .t:active{filter:brightness(1.4)}
+  .n{font-size:13px;opacity:.85}
+  .p{font-size:44px;font-weight:700;line-height:1}
+  .g{font-size:15px;margin-top:2px}
+  #bar{display:flex;gap:4px;padding:4px}
+  #bar button{flex:1;background:#333;color:#fff;border:0;border-radius:10px;font-size:13px;padding:6px 0}
+  #msg{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;flex-direction:column;font-size:18px;text-align:center}
+  #msg button{margin-top:10px;background:#1f6f3f;color:#fff;border:0;border-radius:10px;padding:8px 16px;font-size:15px}
+</style>
+</head>
+<body>
+<div id="top"></div>
+<div id="teams">
+  <button class="t" id="a" onclick="pt(0)"><span class="n">MY</span><span class="p" id="pa">0</span><span class="g" id="ga">0</span></button>
+  <button class="t" id="b" onclick="pt(1)"><span class="n">ONI</span><span class="p" id="pb">0</span><span class="g" id="gb">0</span></button>
+</div>
+<div id="bar">
+  <button onclick="undo()">↶ Cofnij</button>
+  <button id="gp" onclick="toggleGP()"></button>
+  <button onclick="reset()">Nowy</button>
+</div>
+<div id="msg"><div id="msgt"></div><button onclick="hide()">OK</button></div>
+<script>
+var LBL=['0','15','30','40'];
+var S, H=[];
+function fresh(){return{p:[0,0],g:[0,0],sets:[],tb:false,gp:true,done:false}}
+function save(){
+  try{localStorage.setItem('padel',JSON.stringify({S:S,H:H.slice(-200)}))}catch(e){}
+  // backup in URL hash, survives reload even without localStorage
+  try{history.replaceState(null,'','#'+encodeURIComponent(JSON.stringify(S)))}catch(e){}
+}
+function load(){
+  try{var d=JSON.parse(localStorage.getItem('padel'));if(d&&d.S){S=d.S;H=d.H||[];return}}catch(e){}
+  try{if(location.hash.length>1){S=JSON.parse(decodeURIComponent(location.hash.slice(1)));return}}catch(e){}
+  S=fresh();
+}
+function setsWon(i){var n=0;S.sets.forEach(function(s){if(s[i]>s[1-i])n++});return n}
+function winGame(i){
+  S.g[i]++;S.p=[0,0];
+  var a=S.g[i],b=S.g[1-i];
+  if(S.tb||(a>=6&&a-b>=2)){
+    S.sets.push(S.g.slice());S.g=[0,0];S.tb=false;
+    if(setsWon(i)==2){S.done=true;show((i?'ONI':'MY')+' wygrywają mecz!')}
+    else show('Set dla: '+(i?'ONI':'MY'));
+  }
+  else if(S.g[0]==6&&S.g[1]==6){S.tb=true}
+}
+function pt(i){
+  if(S.done)return;
+  H.push(JSON.stringify(S));
+  var p=S.p;p[i]++;
+  if(S.tb){if(p[i]>=7&&p[i]-p[1-i]>=2)winGame(i)}
+  else if(S.gp){if(p[i]==4)winGame(i)}
+  else{if(p[i]>=4&&p[i]-p[1-i]>=2)winGame(i)}
+  save();draw();
+}
+function undo(){if(H.length){S=JSON.parse(H.pop());save();draw()}}
+function reset(){if(confirm('Nowy mecz?')){var gp=S.gp;S=fresh();S.gp=gp;H=[];save();draw()}}
+function toggleGP(){S.gp=!S.gp;save();draw()}
+function lbl(i){
+  var a=S.p[i],b=S.p[1-i];
+  if(S.tb)return String(a);
+  if(a>=3&&b>=3){if(S.gp||a==b)return '40';return a>b?'AD':'40'}
+  return LBL[Math.min(a,3)];
+}
+function draw(){
+  document.getElementById('pa').textContent=lbl(0);
+  document.getElementById('pb').textContent=lbl(1);
+  document.getElementById('ga').textContent='gemy '+S.g[0];
+  document.getElementById('gb').textContent='gemy '+S.g[1];
+  var t=S.sets.map(function(s){return s[0]+':'+s[1]}).join('  ');
+  var gold=(!S.tb&&S.gp&&S.p[0]==3&&S.p[1]==3)?' <b>ZŁOTY PUNKT</b>':'';
+  document.getElementById('top').innerHTML=(t?'Sety: <b>'+t+'</b>':'Set 1')+(S.tb?' <b>TIEBREAK</b>':'')+gold;
+  document.getElementById('gp').textContent=S.gp?'Złoty ✓':'Przewagi';
+}
+function show(t){document.getElementById('msgt').textContent=t;document.getElementById('msg').style.display='flex'}
+function hide(){document.getElementById('msg').style.display='none'}
+load();draw();
+</script>
+</body>
+</html>
